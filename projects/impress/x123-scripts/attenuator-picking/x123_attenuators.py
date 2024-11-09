@@ -11,15 +11,17 @@ from adetsim.hafx_src import X123Stack
 
 
 @u.quantity_input
-def attenuate(pinhole_diam: u.cm, thicks: u.um, attenuator_mat: Material, energy_edges: u.keV):
+def attenuate(
+    pinhole_diam: u.cm, thicks: u.um, attenuator_mat: Material, energy_edges: u.keV
+):
     # pinhole through the center
-    pinhole_area = (np.pi * (diam / 2)**2).to(u.mm**2)
+    pinhole_area = (np.pi * (diam / 2) ** 2).to(u.mm**2)
 
     # attenuated area excluding the pinhole
-    x123_area = np.pi * (X123Stack.X123Stack.X123_DIAMETER)**2 << u.mm**2
+    x123_area = np.pi * (X123Stack.X123Stack.X123_DIAMETER) ** 2 << u.mm**2
     x123_eff_area = x123_area - pinhole_area
 
-    classes = ('C1', 'M1', 'M5', 'X1')
+    classes = ("C1", "M1", "M5", "X1")
     flares = [
         FlareSpectrum.FlareSpectrum.make_with_battaglia_scaling(
             goes_class=gc, energy_edges=energy_edges.to(u.keV).value
@@ -35,7 +37,7 @@ def attenuate(pinhole_diam: u.cm, thicks: u.um, attenuator_mat: Material, energy
 
     thicks = thicks.to(u.um)
     for thk in thicks:
-        print(f'start {thk} thick {attenuator_mat.name} attenuator')
+        print(f"start {thk} thick {attenuator_mat.name} attenuator")
         xs = X123Stack.X123Stack()
         attenuator_mat.diameter = xs.materials[0].diameter
         attenuator_mat.thickness = thk.to(u.cm).value
@@ -46,12 +48,13 @@ def attenuate(pinhole_diam: u.cm, thicks: u.um, attenuator_mat: Material, energy
 
         res = att_res + unatt_res
         for fl in flares:
-            print('\tdo', fl.goes_class)
-            processed[fl.goes_class][f'{thk:.2f}'] = res @ fl.flare
+            print("\tdo", fl.goes_class)
+            processed[fl.goes_class][f"{thk:.2f}"] = res @ fl.flare
 
     return processed
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # al
     # thicks = (np.array([100, 105, 110, 115, 120]) << u.um).to(u.cm)
     # w
@@ -69,17 +72,13 @@ if __name__ == '__main__':
         attenuation_thickness=NotImplemented,
         mass_density=hmp.DENSITIES[mat_key],
         attenuation_data=AttenuationData.from_compound_dict(
-            hmp.ATTEN_FORMULAS[mat_key]),
-        name=mat_key
+            hmp.ATTEN_FORMULAS[mat_key]
+        ),
+        name=mat_key,
     )
 
-    dat = attenuate(
-        diam,
-        thicks,
-        attenuator,
-        edges
-    )
+    dat = attenuate(diam, thicks, attenuator, edges)
 
     print(dat)
-    with open('x123-atts.pkl', 'wb') as f:
-        pickle.dump({'dat': dat, 'diameter': diam, 'edges': edges}, f)
+    with open("x123-atts.pkl", "wb") as f:
+        pickle.dump({"dat": dat, "diameter": diam, "edges": edges}, f)
