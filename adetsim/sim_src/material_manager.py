@@ -1,4 +1,5 @@
 import copy
+from collections import OrderedDict
 import os
 import requests
 
@@ -7,6 +8,7 @@ import asdf
 import numpy as np
 
 from . import material_constants as mcon
+from . import magic_data
 
 CACHE_PATH = os.path.join(os.path.dirname(__file__), "element_cache")
 FILE_FMT = os.path.join(CACHE_PATH, "{elt}.asdf")
@@ -67,26 +69,14 @@ def download_save_nist(name: str) -> str:
         os.mkdir(CACHE_PATH)
 
     atomic_number = mcon.elements[name]
-    # Low/high energy bounds in MeV.
-    # Should cover most use cases... ;)
-    low, high = 0.0001, 10000
-    form_dat = {
-        "character": "space",
-        "Method": "1",
-        "ZNum": atomic_number,
-        "OutOpt": "PIC",
-        "NumAdd": "1",
-        "Output": "on",
-        "WindowXmin": low,
-        "WindowXmax": high,
-        "photoelectric": "on",
-        "coherent": "on",
-        "incoherent": "on",
-    }
 
     # Data request URL from XCOM
     element_url = "https://physics.nist.gov/cgi-bin/Xcom/data.pl"
-    resp = requests.post(element_url, data=form_dat)
+    resp = requests.post(
+        element_url,
+        data=magic_data.request.format(znum=atomic_number),
+        headers=magic_data.headers
+    )
     try:
         data = decode_nist_response(resp.text)
     except ValueError:
