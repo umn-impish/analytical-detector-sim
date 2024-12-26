@@ -24,17 +24,17 @@ class AttenuationType:
 class AttenuationData:
     @classmethod
     def from_compound_dict(cls, compound: dict[str, float]):
-        """
+        '''
         Construct an AttenuationData using the same compound format as
         in `material_manager`.
-        """
+        '''
         weighted_coeffs = mman.fetch_compound(compound)
-        for name, coeffs in weighted_coeffs.items():
+        for (name, coeffs) in weighted_coeffs.items():
             clean = {
-                "energy": coeffs["energy"].to_value(u.keV),
+                'energy': (coeffs['energy'] << u.MeV).to_value(u.keV),
             }
-            for k in ("rayleigh", "compton", "photoelectric"):
-                clean[k] = coeffs[k].to_value(u.cm**2 / u.g)
+            for k in ('rayleigh', 'compton', 'photoelectric'):
+                clean[k] = (coeffs[k] << u.cm**2 / u.g).to_value(u.cm**2 / u.g)
             weighted_coeffs[name] = clean
         return AttenuationData(weighted_coeffs)
 
