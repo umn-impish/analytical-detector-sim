@@ -4,7 +4,7 @@ from adetsim.sim_src import AttenuationData as ad
 from adetsim.sim_src import DetectorStack as ds
 from adetsim.sim_src import FlareSpectrum as fs
 from adetsim.sim_src import Material as mat
-from adetsim.hafx_src import FixedEnergyResolutionDetector as ferd
+from adetsim.hafx_src.detectors import FixedEnergyResolutionDetector
 from adetsim.hafx_src import HafxMaterialProperties as hmp
 
 MAT_FORMULAS = {
@@ -52,8 +52,8 @@ class GripsStack(ds.DetectorStack):
                 continue
             self.detector = mat.Material(**kw)
 
-        res = 0.4
-        super().__init__(mats, ferd.FixedEnergyResolutionDetector(res))
+        res = 0.3
+        super().__init__(mats, FixedEnergyResolutionDetector(res))
 
     def generate_detector_response_to(
         self,
