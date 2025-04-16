@@ -12,7 +12,7 @@ import adetsim.sim_src.AttenuationData as ad
 from adetsim.sim_src.FlareSpectrum import FlareSpectrum
 from adetsim.sim_src.DetectorStack import DetectorStack
 from adetsim.sim_src.Material import Material
-from adetsim.hafx_src.Sipm3000 import Sipm3000
+from adetsim.hafx_src.sipm3000 import Sipm3000
 from .atmospheric_lookup_table import compute_lookup_table, ABUNDANCE_COLS
 
 plt.style.use(os.path.join(os.path.dirname(__file__), "styles/plot.mplstyle"))
@@ -175,7 +175,8 @@ class Atmosphere:
         ) << u.cm
 
         elemental_abundances = self._compute_layer_composition(row)
-        layer_attenuation = ad.AttenuationData.from_compound_dict(elemental_abundances)
+        layer_attenuation = ad.AttenuationData.from_compound_dict(
+            elemental_abundances)
         material = Material(
             self.cross_section_diameter.value,
             thickness.value,
@@ -226,7 +227,8 @@ class Atmosphere:
         while current_altitude >= self.minimum_altitude:
             print("Processing altitude", current_altitude)
 
-            layer = self._construct_layer(current_altitude, layer_thickness_factor)
+            layer = self._construct_layer(
+                current_altitude, layer_thickness_factor)
             layer_flare = layer.attenuate_spectrum(
                 input_spectrum, apply_energy_resolution=apply_energy_resolution
             )

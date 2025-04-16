@@ -10,6 +10,9 @@ packages = [
     "adetsim.atmoatt",
 ]
 
+[tool.setuptools.package-data]
+"adetsim.atmoatt" = ["styles/*"]
+
 [project]
 version = "0"
 name = "adetsim"
