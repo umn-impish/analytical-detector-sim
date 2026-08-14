@@ -1,5 +1,5 @@
 """
-Bigass dictionaries that we use to map from element name to Z or atomic mass
+Map from element name to Z or atomic mass
 """
 
 elements = {

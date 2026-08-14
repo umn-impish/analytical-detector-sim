@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Run McMurdo attenuation for a variety of flares in parallel
+
+classes="C1 C5 M1 M5 X1 X5 X9"
+for c in $classes; do
+    python mcmurdo_station_attenuation.py -f $c -e 30 -s 110 &
+done

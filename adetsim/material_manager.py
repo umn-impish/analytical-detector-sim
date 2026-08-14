@@ -1,14 +1,13 @@
 import copy
-from collections import OrderedDict
 import os
+
+import asdf
+import astropy.units as u
+import numpy as np
 import requests
 
-import astropy.units as u
-import asdf
-import numpy as np
-
-from . import material_constants as mcon
 from . import magic_data
+from . import material_constants as mcon
 
 CACHE_PATH = os.path.join(os.path.dirname(__file__), "element_cache")
 FILE_FMT = os.path.join(CACHE_PATH, "{elt}.asdf")
@@ -35,8 +34,8 @@ def fetch_compound(formula: dict[str, float]) -> dict[str, dict[str, u.Quantity]
     Doping can also be handled.
     Example for GAGG(Ce):      {'Gd': 2.95, 'Ce': 0.05, 'Al': 2, 'Ga': 3, 'O': 12}
     """
-    masses = dict()
-    coeffs = dict()
+    masses = {}
+    coeffs = {}
     for element, num in formula.items():
         element = element.title()
         coeffs[element] = fetch_element(element)
@@ -44,7 +43,7 @@ def fetch_compound(formula: dict[str, float]) -> dict[str, dict[str, u.Quantity]
 
     total_mass = sum(masses.values())
     scaled_masses = {k: (v / total_mass) for (k, v) in masses.items()}
-    ret = dict()
+    ret = {}
     for elt, m in scaled_masses.items():
         ret_key = f"{elt}_{m:0.2f}"
 
@@ -75,7 +74,7 @@ def download_save_nist(name: str) -> str:
     resp = requests.post(
         element_url,
         data=magic_data.request.format(znum=atomic_number),
-        headers=magic_data.headers
+        headers=magic_data.headers,
     )
     try:
         data = decode_nist_response(resp.text)
