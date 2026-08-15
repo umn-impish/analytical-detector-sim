@@ -1,7 +1,12 @@
 import copy
+import functools
+from collections.abc import Callable
+from typing import cast
 
 import numpy as np
 from astropy import units as u
+from scipy import optimize as sco
+from scipy.integrate import quad
 
 from . import matter
 
@@ -22,3 +27,53 @@ class PhysicalDetectorStack:
 
 
 # TODO resolution etc.
+class SqrtEnergyResolution:
+    @u.quantity_input
+    def __init__(
+        self,
+        reference_fwhms: u.Quantity[u.percent],
+        fwhm_errors: u.Quantity[u.percent],
+        reference_energies: u.Quantity[u.keV],
+    ):
+        self.fwhms = reference_fwhms
+        self.anchor_energies = reference_energies
+
+        self.resolution_function: Callable[[np.ndarray], np.ndarray]
+        self._fit_resolution_function(fwhm_errors)
+
+    @u.quantity_input
+    def _fit_resolution_function(self, errors: u.Quantity[u.percent]):
+        r"""Fit a function of the form $\alpha / \sqrt{E}$ to the provided FWHMs and anchor energies"""
+
+        def resolution_func(e, scale):
+            return scale / np.sqrt(e)
+
+        anchors = np.asarray(self.anchor_energies.to_value(u.keV))
+        fwhms = np.asarray(self.fwhms.to_value(u.one))
+        sigma = np.asarray(errors.to_value(u.one))
+        (scale,), _ = sco.curve_fit(resolution_func, anchors, fwhms, sigma=sigma)
+        self.resolution_function = functools.partial(resolution_func, scale=scale)
+
+    @u.quantity_input
+    def generate_resolution_matrix(self, energy_bins: u.Quantity[u.keV]) -> np.ndarray:
+        """Generate the energy resolution for an instrument assuming 1 / sqrt(E) scaling.
+        The pivot energies are set in the constructor along with their FWHMs."""
+        integral_scale = 1 / np.sqrt(np.pi)
+
+        def smear(e, mu, fwhm):
+            """A Gaussian function normalized on [-inf, inf]"""
+            s = fwhm / 2 / np.log(2)
+            return (integral_scale / s) * np.exp(-(e - mu) * (e - mu) / (s * s))
+
+        bins = np.asarray(energy_bins.to_value(u.keV))
+        mids = bins[:-1] + (de := np.diff(bins)) / 2
+        fwhms = self.resolution_function(mids)
+        ret = np.empty((mids.size, mids.size))
+        for i in np.arange(mids.size):
+            mid = mids[i]
+            width = fwhms[i]
+            this_smear = functools.partial(smear, mu=mid, fwhm=width)
+            for j in np.arange(mids.size):
+                ret[i][j], *_ = quad(this_smear, mid - de[i] / 2, mid + de[i] / 2)
+
+        return ret
