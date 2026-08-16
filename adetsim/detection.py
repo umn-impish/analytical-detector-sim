@@ -54,18 +54,26 @@ class SqrtEnergyResolution:
         self.resolution_function = functools.partial(resolution_func, scale=scale)
 
     @u.quantity_input
-    def generate_resolution_matrix(
-        self, energy_bins: u.Quantity[u.keV], cut: float
-    ) -> np.ndarray:
-        """Generate the energy resolution for an instrument assuming 1 / sqrt(E) scaling.
+    def generate_resolution_matrix(self, energy_bins: u.Quantity[u.keV]) -> np.ndarray:
+        r"""Generate the energy resolution for an instrument assuming `1 / sqrt(E)` scaling.
         The pivot energies are set in the constructor along with their FWHMs.
 
-        The `cut` parameter indicates how small the probability bin may be before it is truncated.
+        The resulting matrix is a collection of *row* vectors whose entries are pixellated
+        Gaussians, such that the sum of the entire row of (infinite) pixels is 1.
+        The sum of each row need not be 1 if the starting pixel is near the edge.
+        This is equivalent to saying, "We can't measure energies above or below our measurement range."
+
+        To multiply the matrix onto an energy redistribution matrix, do (resolution matrix) @ (redistribution matrix).
+        This multiplication is (should be?) equivalent to convolving the pixellated Gaussians.
+        The response matrix should have its off-diagonal elements in upper rows of the matrix,
+        that is, row indices <= column indices.
+        This is the standard notation. Keep in mind that Matplotlib displays such matrices flipped
+        when using e.g. `pcolormesh`, so the lower indices correspond to lower x or y values on the plot.
         """
         integral_scale = 1 / np.sqrt(np.pi)
 
         def smear(e, mu, fwhm):
-            """A Gaussian function normalized on [-inf, inf]"""
+            """A Gaussian function normalized on (-inf, inf)"""
             s = fwhm / 2 / np.log(2)
             return (integral_scale / s) * np.exp(-(e - mu) * (e - mu) / (s * s))
 
@@ -73,13 +81,22 @@ class SqrtEnergyResolution:
         mids = bins[:-1] + (de := np.diff(bins)) / 2
         fwhms = self.resolution_function(mids)
         ret = np.empty((mids.size, mids.size))
+
         for i in np.arange(mids.size):
             mid = mids[i]
+            # The FWHMs are given as percentages, so convert them back to keV
             width = fwhms[i] * mid
+
+            # We need to apply the gaussian centered at the energy midpoint
+            # of the current row with the FWHM computed for that energy
             this_smear = functools.partial(smear, mu=mid, fwhm=width)
+
             for j in np.arange(mids.size):
+                # Now, for each column, sum the probability flux
+                # redistributed from the diagonal pixel into the current energy bin
                 this_mid = mids[j]
-                res, *_ = quad(this_smear, this_mid - de[j] / 2, this_mid + de[j] / 2)
-                ret[i][j] = res if res > cut else 0
+                ret[i][j], *_ = quad(
+                    this_smear, this_mid - de[j] / 2, this_mid + de[j] / 2
+                )
 
         return ret
