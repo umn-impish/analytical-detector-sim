@@ -1,5 +1,6 @@
 import copy
 import os
+from typing import cast
 
 import asdf
 import astropy.units as u
@@ -71,10 +72,11 @@ def download_save_nist(name: str) -> str:
 
     # Data request URL from XCOM
     element_url = "https://physics.nist.gov/cgi-bin/Xcom/data.pl"
+    request_data = magic_data.generate_request(znum=atomic_number)
     resp = requests.post(
         element_url,
-        data=magic_data.request.format(znum=atomic_number),
-        headers=magic_data.headers,
+        data=cast(str, request_data["request"]),
+        headers=cast(dict[str, str], request_data["headers"]),
     )
     try:
         data = decode_nist_response(resp.text)
