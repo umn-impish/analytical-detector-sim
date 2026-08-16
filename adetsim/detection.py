@@ -1,7 +1,6 @@
 import copy
 import functools
 from collections.abc import Callable
-from typing import cast
 
 import numpy as np
 from astropy import units as u
@@ -55,9 +54,14 @@ class SqrtEnergyResolution:
         self.resolution_function = functools.partial(resolution_func, scale=scale)
 
     @u.quantity_input
-    def generate_resolution_matrix(self, energy_bins: u.Quantity[u.keV]) -> np.ndarray:
+    def generate_resolution_matrix(
+        self, energy_bins: u.Quantity[u.keV], cut: float
+    ) -> np.ndarray:
         """Generate the energy resolution for an instrument assuming 1 / sqrt(E) scaling.
-        The pivot energies are set in the constructor along with their FWHMs."""
+        The pivot energies are set in the constructor along with their FWHMs.
+
+        The `cut` parameter indicates how small the probability bin may be before it is truncated.
+        """
         integral_scale = 1 / np.sqrt(np.pi)
 
         def smear(e, mu, fwhm):
@@ -71,9 +75,11 @@ class SqrtEnergyResolution:
         ret = np.empty((mids.size, mids.size))
         for i in np.arange(mids.size):
             mid = mids[i]
-            width = fwhms[i]
+            width = fwhms[i] * mid
             this_smear = functools.partial(smear, mu=mid, fwhm=width)
             for j in np.arange(mids.size):
-                ret[i][j], *_ = quad(this_smear, mid - de[i] / 2, mid + de[i] / 2)
+                this_mid = mids[j]
+                res, *_ = quad(this_smear, this_mid - de[j] / 2, this_mid + de[j] / 2)
+                ret[i][j] = res if res > cut else 0
 
         return ret
