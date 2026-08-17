@@ -6,6 +6,7 @@ import numpy as np
 from astropy import units as u
 from scipy import optimize as sco
 from scipy.integrate import quad
+from scipy.special import erf
 
 from . import matter
 
@@ -60,6 +61,7 @@ class SqrtEnergyResolution:
 
         The resulting matrix is a collection of *row* vectors whose entries are pixellated
         Gaussians, such that the sum of the entire row of (infinite) pixels is 1.
+        Each pixel is a probability element.
         The sum of each row need not be 1 if the starting pixel is near the edge.
         This is equivalent to saying, "We can't measure energies above or below our measurement range."
 
@@ -70,12 +72,22 @@ class SqrtEnergyResolution:
         This is the standard notation. Keep in mind that Matplotlib displays such matrices flipped
         when using e.g. `pcolormesh`, so the lower indices correspond to lower x or y values on the plot.
         """
-        integral_scale = 1 / np.sqrt(np.pi)
+        def smear_integral(start, end, mu, fwhm):
+            """The probability integral for a Gaussian across a bin defined by
+            `[start, end]` centered on `mu` with a FWHM `fwhm`.
+            
+            The error function is defined as the integral across (0 --> x),
+            so subtracting two evaluations gives the definite integral of a Gaussian
+            function between two bounds.
+            """
+            s = fwhm / 2 / np.sqrt(2 * np.log(2))
+            left = (start - mu) / s
+            right = (end - mu) / s
 
-        def smear(e, mu, fwhm):
-            """A Gaussian function normalized on (-inf, inf)"""
-            s = fwhm / 2 / np.log(2)
-            return (integral_scale / s) * np.exp(-(e - mu) * (e - mu) / (s * s))
+            # The factor of (1 / 2) is because `erf` is normalized
+            # s.t. erf(inf) = 1, but the probability function is normalized
+            # s.t. integral(-inf, inf) = 1, i.e. half the total area of erf.
+            return (1 / 2) * (erf(right) - erf(left))
 
         bins = np.asarray(energy_bins.to_value(u.keV))
         mids = bins[:-1] + (de := np.diff(bins)) / 2
@@ -89,14 +101,11 @@ class SqrtEnergyResolution:
 
             # We need to apply the gaussian centered at the energy midpoint
             # of the current row with the FWHM computed for that energy
-            this_smear = functools.partial(smear, mu=mid, fwhm=width)
+            this_integ = functools.partial(smear_integral, mu=mid, fwhm=width)
 
             for j in np.arange(mids.size):
                 # Now, for each column, sum the probability flux
                 # redistributed from the diagonal pixel into the current energy bin
-                this_mid = mids[j]
-                ret[i][j], *_ = quad(
-                    this_smear, this_mid - de[j] / 2, this_mid + de[j] / 2
-                )
+                ret[i][j] = this_integ(mids[j] - de[j] / 2, mids[j] + de[j] / 2)
 
         return ret
