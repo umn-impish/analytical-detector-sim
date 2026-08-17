@@ -72,23 +72,6 @@ class SqrtEnergyResolution:
         This is the standard notation. Keep in mind that Matplotlib displays such matrices flipped
         when using e.g. `pcolormesh`, so the lower indices correspond to lower x or y values on the plot.
         """
-        def smear_integral(start, end, mu, fwhm):
-            """The probability integral for a Gaussian across a bin defined by
-            `[start, end]` centered on `mu` with a FWHM `fwhm`.
-            
-            The error function is defined as the integral across (0 --> x),
-            so subtracting two evaluations gives the definite integral of a Gaussian
-            function between two bounds.
-            """
-            s = fwhm / 2 / np.sqrt(2 * np.log(2))
-            left = (start - mu) / s
-            right = (end - mu) / s
-
-            # The factor of (1 / 2) is because `erf` is normalized
-            # s.t. erf(inf) = 1, but the probability function is normalized
-            # s.t. integral(-inf, inf) = 1, i.e. half the total area of erf.
-            return (1 / 2) * (erf(right) - erf(left))
-
         bins = np.asarray(energy_bins.to_value(u.keV))
         mids = bins[:-1] + (de := np.diff(bins)) / 2
         fwhms = self.resolution_function(mids)
@@ -109,3 +92,26 @@ class SqrtEnergyResolution:
                 ret[i][j] = this_integ(mids[j] - de[j] / 2, mids[j] + de[j] / 2)
 
         return ret
+
+
+def smear_integral(start, end, mu, fwhm):
+    """The probability integral for a Gaussian across a bin defined by
+    `[start, end]` centered on `mu` with a FWHM `fwhm`.
+    Evaluating this at bin edges is equivalent to pixellating a Gaussian.
+
+    Technical note: `erf` is defined as the integral across (0 --> x),
+    so subtracting two evaluations gives the definite integral of a Gaussian
+    function between two bounds.
+    """
+    # The FWHM to sigma conversion comes from assuming an exponential of the form
+    # f(E) ~ exp(-((E - mu) / sigma)**2)
+    # This lines up with what `erf` expects as an argument, too,
+    # but is not the standard way to write the Normal distribution.
+    sigma = fwhm / 2 / np.sqrt(np.log(2))
+    left = (start - mu) / sigma
+    right = (end - mu) / sigma
+
+    # The factor of (1 / 2) is because `erf` is normalized
+    # s.t. erf(inf) = 1, but the probability function is normalized
+    # s.t. integral(-inf, inf) = 1, i.e. half the total area of erf.
+    return (1 / 2) * (erf(right) - erf(left))
