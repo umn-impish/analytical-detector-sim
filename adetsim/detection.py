@@ -40,19 +40,21 @@ class SqrtEnergyResolution:
 
         self.resolution_function: Callable[[np.ndarray], np.ndarray]
         self._fit_resolution_function(fwhm_errors)
+        self.function_paramters: dict[str, float]
 
     @u.quantity_input
     def _fit_resolution_function(self, errors: u.Quantity[u.percent]):
-        r"""Fit a function of the form $\alpha / \sqrt{E}$ to the provided FWHMs and anchor energies"""
+        r"""Fit a function of the form $sqrt(a + bE) / E$ to the provided FWHMs and anchor energies"""
 
-        def resolution_func(e, scale):
-            return scale / np.sqrt(e)
+        def resolution_func(e, a, b):
+            return np.sqrt(a + b * e) / e
 
         anchors = np.asarray(self.anchor_energies.to_value(u.keV))
         fwhms = np.asarray(self.fwhms.to_value(u.one))
         sigma = np.asarray(errors.to_value(u.one))
-        (scale,), _ = sco.curve_fit(resolution_func, anchors, fwhms, sigma=sigma)
-        self.resolution_function = functools.partial(resolution_func, scale=scale)
+        (a, b), _ = sco.curve_fit(resolution_func, anchors, fwhms, sigma=sigma)
+        self.function_paramters = {"a": a, "b": b}
+        self.resolution_function = functools.partial(resolution_func, a=a, b=b)
 
     @u.quantity_input
     def generate_resolution_matrix(self, energy_bins: u.Quantity[u.keV]) -> np.ndarray:
