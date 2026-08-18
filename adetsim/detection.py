@@ -5,7 +5,6 @@ from collections.abc import Callable
 import numpy as np
 from astropy import units as u
 from scipy import optimize as sco
-from scipy.integrate import quad
 from scipy.special import erf
 
 from . import matter
