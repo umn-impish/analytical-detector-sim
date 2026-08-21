@@ -8,6 +8,35 @@ import numpy as np
 from adetsim import detection
 
 
+def main():
+    print("start hardware response")
+    response = generate_hardware_responses()
+    
+    print("start lyso resolution")
+    response["lyso-resolution"] = (
+        generate_energy_resolution(
+            energy_bins=response["energy_bins"],
+            anchor_energies=[31, 60, 122] << u.keV,
+            anchor_fwhms=(lyso_fwhms := [60, 30, 21] << u.percent),
+            fwhm_errors=0.05 * lyso_fwhms,
+        )
+        << u.one
+    )
+
+    print("start yap resolution")
+    response["yap-resolution"] = (
+        generate_energy_resolution(
+            energy_bins=response["energy_bins"],
+            anchor_energies=[31, 60, 122] << u.keV,
+            anchor_fwhms=(yap_fwhms := [28, 20, 13] << u.percent),
+            fwhm_errors=0.05 * yap_fwhms,
+        )
+        << u.one
+    )
+    af = asdf.AsdfFile(response)
+    af.write_to("impish-hardware-response.asdf")
+
+
 def generate_hardware_responses() -> dict[str, u.Quantity]:
     area = {
         "lyso": cast(u.Quantity, (3 / 2) * (33 * 33 << u.mm**2)),
@@ -43,13 +72,22 @@ def generate_hardware_responses() -> dict[str, u.Quantity]:
 
 
 @u.quantity_input
-def generate_energy_resolution(ebins: u.Quantity[u.keV]):
-    pass
+def generate_energy_resolution(
+    energy_bins: u.Quantity[u.keV],
+    anchor_energies: u.Quantity[u.keV],
+    anchor_fwhms: u.Quantity[u.percent],
+    fwhm_errors: u.Quantity[u.percent],
+) -> np.ndarray:
+    """
+    Generate the energy resolution component for a scintillator
+    """
+    res_gen = detection.SqrtEnergyResolution(
+        reference_fwhms=anchor_fwhms,
+        fwhm_errors=fwhm_errors,
+        reference_energies=anchor_energies,
+    )
+    return res_gen.generate_resolution_matrix(energy_bins)
 
 
 if __name__ == "__main__":
-    response = generate_hardware_responses()
-    ...
-    af = asdf.AsdfFile(response)
-    af.write_to("impish-hardware-response.asdf")
-    
+    main()
