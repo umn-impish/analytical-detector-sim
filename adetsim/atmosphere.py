@@ -272,6 +272,12 @@ class Atmosphere:
     cross_section_diameter: u.Quantity[u.cm] = 10 * u.cm
     solar_zenith: u.Quantity[u.deg] = 0 * u.deg
 
+    # Flags for what attenuation we want enabled/disabled for
+    # atmospheric layers
+    photoelectric: bool = True
+    rayleigh: bool = False
+    compton: bool = False
+
     def __post_init__(self):
         self.lookup_table = compute_lookup_table(
             self.datetime,
@@ -386,6 +392,10 @@ class Atmosphere:
             print("Processing altitude", current_altitude)
 
             layer = self._construct_layer(current_altitude, layer_thickness_factor)
+            layer.attenuations.photoelectric = self.photoelectric
+            layer.attenuations.rayleigh = self.rayleigh
+            layer.attenuations.compton = self.compton
+
             trans_vec = layer.compute_transmission(flare_spectrum.energy_edges)
             cumulative_transmission *= trans_vec
             spectral_output["layers"].append(
