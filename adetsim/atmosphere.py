@@ -2,8 +2,9 @@ import copy
 import itertools
 import os
 import pickle
-from collections.abc import Mapping
+from collections.abc import Mapping, Iterable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
@@ -101,34 +102,25 @@ def _compute_abundances(data: QTable):
 
 
 def compute_lookup_table(
-    datetime: np.datetime64,
+    time: datetime,
     lat: u.Quantity,
     lon: u.Quantity,
-    min_altitude: u.Quantity,
-    max_altitude: u.Quantity,
-    step: u.Quantity,
+    altitudes: Iterable[u.Quantity],
+    remove_nonist_species: bool = True,
     **run_kwargs,
 ) -> QTable:
     """
     Computes a lookup table for atmospheric composition using MSIS.
+    time should either be in UTC or be timezone-aware.
     """
 
     lat = lat << u.degree
     lon = lon << u.degree
-    altitudes = (
-        np.arange(
-            (min_altitude << u.km).value,
-            ((max_altitude + step) << u.km).value,
-            (step << u.km).value,
-        )
-        * u.km
-    )
-
     output = msis.run(
-        dates=datetime,
+        dates=time.astimezone(timezone.utc),
         lons=lon.value,
         lats=lat.value,
-        alts=altitudes.value,
+        alts=altitudes.to_value(u.km),
         **run_kwargs,
     )
     output = np.squeeze(output)
@@ -137,10 +129,11 @@ def compute_lookup_table(
     table["altitude"] = altitudes
     table.meta = {"datetime": datetime, "lat": lat, "lon": lon}
 
-    for c in (table.columns).copy():
-        if c[-3:] == "den" and c not in DENSITY_COLS:
-            table.remove_column(c)
-            print("removed", c)
+    if remove_nonist_species:
+        for c in (table.columns).copy():
+            if c[-3:] == "den" and c not in DENSITY_COLS:
+                table.remove_column(c)
+                print("removed", c)
 
     _compute_abundances(table)
 
@@ -263,12 +256,10 @@ def generate_flare_spectrum(
 
 @dataclass
 class Atmosphere:
-    datetime: np.datetime64
+    time: datetime
     latitude: u.Quantity[u.deg]
     longitude: u.Quantity[u.deg]
-    minimum_altitude: u.Quantity[u.km]
-    maximum_altitude: u.Quantity[u.km]
-    altitude_step: u.Quantity[u.km]
+    altitudes: u.Quantity[u.km]
     cross_section_diameter: u.Quantity[u.cm] = 10 * u.cm
     solar_zenith: u.Quantity[u.deg] = 0 * u.deg
 
@@ -280,12 +271,10 @@ class Atmosphere:
 
     def __post_init__(self):
         self.lookup_table = compute_lookup_table(
-            self.datetime,
+            self.time,
             self.latitude,
             self.longitude,
-            self.minimum_altitude,
-            self.maximum_altitude,
-            self.altitude_step,
+            self.altitudes,
         )
 
     def _get_altitude_table_row(self, altitude: u.Quantity) -> Row:
@@ -372,26 +361,25 @@ class Atmosphere:
         os.makedirs(plot_dir, exist_ok=True)
 
         print(
-            f"Iterating from {self.maximum_altitude} to {self.minimum_altitude.value} altitude at {self.altitude_step} steps"
+            f"Iterating from {self.altitudes.max()} to {self.altitudes.min()} altitude"
         )
 
         thickness = thickness_through_zenith(
             self.solar_zenith,
-            self.maximum_altitude,
-            observer_altitude=self.minimum_altitude,
+            self.altitudes.max(),
+            observer_altitude=self.altitudes.min(),
         )
-        norm = self.maximum_altitude - self.minimum_altitude
+        norm = self.altitudes.max() - self.altitudes.min()
         layer_thickness_factor = thickness / norm
 
-        current_altitude = copy.deepcopy(self.maximum_altitude)
         spectral_output = {"input": flare_spectrum, "layers": []}
         cumulative_transmission = np.ones(flare_spectrum.thermal.size)
         flare_spectrum = copy.deepcopy(flare_spectrum)
 
-        while current_altitude >= self.minimum_altitude:
-            print("Processing altitude", current_altitude)
+        for altitude in np.sort(self.altitudes, descending=True):
+            print("Processing altitude", altitude)
 
-            layer = self._construct_layer(current_altitude, layer_thickness_factor)
+            layer = self._construct_layer(altitude, layer_thickness_factor)
             layer.attenuations.photoelectric = self.photoelectric
             layer.attenuations.rayleigh = self.rayleigh
             layer.attenuations.compton = self.compton
@@ -399,7 +387,7 @@ class Atmosphere:
             trans_vec = layer.compute_transmission(flare_spectrum.energy_edges)
             cumulative_transmission *= trans_vec
             spectral_output["layers"].append(
-                (cast(float, current_altitude.to_value(u.km)), cumulative_transmission.copy())
+                (cast(float, altitude.to_value(u.km)), cumulative_transmission.copy())
             )
 
             ax = plot_spectrum(
@@ -423,11 +411,10 @@ class Atmosphere:
             ax.legend()
 
             plot_file = os.path.join(
-                plot_dir, f"{current_altitude.value}{current_altitude.unit}.png"
+                plot_dir, f"{altitude.value}{altitude.unit}.png"
             )
             plt.savefig(plot_file, dpi=150)
 
-            current_altitude -= self.altitude_step
 
         with open(os.path.join(out_dir, "transmissions.pkl"), "wb") as f:
             pickle.dump(spectral_output, f)

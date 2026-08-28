@@ -13,6 +13,7 @@ from adetsim.atmosphere import (
     plot_abundances_stackplot,
     plot_densities,
 )
+from datetime import datetime
 
 
 def main():
@@ -28,23 +29,24 @@ def main():
         "-s", type=float, default=200, help="maximum altitude, in km", required=True
     )
     parser.add_argument(
-        "-e", type=float, default=40, help="minimum altitude, in km", required=True
+        "-e", type=float, default=41, help="minimum altitude, in km", required=True
     )
 
     arg = parser.parse_args()
     flare_class = arg.f
-    maximum_altitude = arg.s << u.km
-    minimum_altitude = arg.e << u.km
+    altitude_step = 5 * u.km
+    altitudes = np.arange(arg.e, arg.s + altitude_step.value, altitude_step.value) * u.km
     zenith_angle = 54.8 << u.deg  # At solar noon, which is 01:56 PM
 
     atmo = Atmosphere(
-        np.datetime64("2024-01-01T13:56"),
+        datetime.strptime("2024-01-01T13:56:00+1300", "%Y-%m-%dT%H:%M:%S%z"),
         -77.84 << u.degree,
         166.67 << u.degree,
-        minimum_altitude,
-        maximum_altitude,
-        altitude_step=5 << u.km,
+        altitudes,
         solar_zenith=zenith_angle,
+        photoelectric=True,
+        rayleigh=True,
+        compton=True,
     )
 
     out_dir = "./mcmurdo-station-attenuation/"
