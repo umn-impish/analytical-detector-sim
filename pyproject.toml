@@ -5,13 +5,10 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = [
     "adetsim",
-    "adetsim.hafx_src",
-    "adetsim.sim_src",
-    "adetsim.atmoatt",
 ]
 
 [tool.setuptools.package-data]
-"adetsim.atmoatt" = ["styles/*"]
+"adetsim" = ["styles/*"]
 
 [project]
 version = "0"
@@ -25,4 +22,9 @@ dependencies = [
     "pymsis",
     "requests",
     "scipy",
+    "sunpy[all]",
+    "sunkit_spex @ git+https://github.com/sunpy/sunkit-spex.git",
+    "jupyter",
+    "ipynb",
+    "pyqt6"
 ]
