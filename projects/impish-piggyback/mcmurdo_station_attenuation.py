@@ -1,6 +1,7 @@
 import argparse
 import os
 import warnings
+from datetime import datetime
 
 import astropy.units as u
 import matplotlib.pyplot as plt
@@ -13,7 +14,6 @@ from adetsim.atmosphere import (
     plot_abundances_stackplot,
     plot_densities,
 )
-from datetime import datetime
 
 
 def main():
@@ -34,8 +34,8 @@ def main():
 
     arg = parser.parse_args()
     flare_class = arg.f
-    altitude_step = 5 * u.km
-    altitudes = np.arange(arg.e, arg.s + altitude_step.value, altitude_step.value) * u.km
+    altitude_step = 5
+    altitudes = np.arange(arg.e, arg.s + altitude_step, altitude_step) << u.km
     zenith_angle = 54.8 << u.deg  # At solar noon, which is 01:56 PM
 
     atmo = Atmosphere(
@@ -61,9 +61,8 @@ def main():
     plot_densities(atmo.lookup_table)
     plt.savefig(f"{out_dir}/atmospheric_densities.png")
 
-
     with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
+        warnings.simplefilter("ignore")
         atmo.attenuate_spectrum_through_layers(
             generate_flare_spectrum(flare_class), out_dir=out_dir
         )
