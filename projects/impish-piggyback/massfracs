@@ -1,0 +1,16 @@
+#!/bin/bash
+# McMurdo Station at solar noon and midnight
+
+python mass_fractions.py \
+    -t 2026-01-01T13:56:00+1300 \
+    -l -77.846 \
+    -ll 166.668 \
+    -f massfracs-noon.asdf \
+     "$@"
+
+python mass_fractions.py \
+    -t 2026-01-01T01:56:00+1300 \
+    -l -77.846 \
+    -ll 166.668 \
+    -f massfracs-midnight.asdf \
+     "$@"
