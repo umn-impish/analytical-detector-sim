@@ -5,7 +5,6 @@ We've used it to model silicon and other solid-state detectors as well as other 
 Always a work in progress! Kind of a mess!
 
 ## Installation
-0. Install [`sunkit-spex`](https://github.com/sunpy/sunkit-spex) from git
 1. Clone the repo
 2. `cd` into the repo directory
 3. Run `pip install -e .`
