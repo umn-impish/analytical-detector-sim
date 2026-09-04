@@ -23,6 +23,17 @@ def fetch_element(element_name: str) -> dict[str, u.Quantity]:
     return load_element_data(file_name)
 
 
+def weight_fractions_from_formula(formula: dict[str, float]) -> dict[str, float]:
+    """Compute the weight fractions of elements given a chemical formula"""
+    masses = {}
+    for element, num in formula.items():
+        element = element.title()
+        masses[element] = num * mcon.atomic_masses[mcon.elements[element]]
+
+    total_mass = sum(masses.values())
+    return {k: (v / total_mass) for (k, v) in masses.items()}
+
+
 def fetch_compound(formula: dict[str, float]) -> dict[str, dict[str, u.Quantity]]:
     """
     Scale mass attenuation coefficients by compound or mixture mass.
@@ -35,15 +46,8 @@ def fetch_compound(formula: dict[str, float]) -> dict[str, dict[str, u.Quantity]
     Doping can also be handled.
     Example for GAGG(Ce):      {'Gd': 2.95, 'Ce': 0.05, 'Al': 2, 'Ga': 3, 'O': 12}
     """
-    masses = {}
-    coeffs = {}
-    for element, num in formula.items():
-        element = element.title()
-        coeffs[element] = fetch_element(element)
-        masses[element] = num * mcon.atomic_masses[mcon.elements[element]]
-
-    total_mass = sum(masses.values())
-    scaled_masses = {k: (v / total_mass) for (k, v) in masses.items()}
+    coeffs = {e: fetch_element(e) for e in formula}
+    scaled_masses = weight_fractions_from_formula(formula)
     ret = {}
     for elt, m in scaled_masses.items():
         ret_key = f"{elt}_{m:0.2f}"
