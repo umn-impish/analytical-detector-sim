@@ -91,22 +91,33 @@ class Observer:
         return self._ephem["sun"]
 
 
+@u.quantity_input()
 def compute_atmosphere_slice_positions(
-    observer: Observer, step: u.Quantity, stop: u.Quantity
+    observer: Observer, step: u.Quantity[u.km], stop: u.Quantity[u.km]
 ) -> list[Position]:
     """Compute the latitude, longitude, and altitude at equally spaced steps
-    between the observer and the Sun.
+    along the Sun-observer vector.
     """
     i = 0
     alt = observer.alt
-    pos = cast(np.float64, observer.icrs.position.km)
+    pos = cast(np.ndarray, observer.icrs.position.km)
     unit_vector = observer.to_sun
-    steps: list[Position] = []
-    while alt < stop:
+    if stop < alt:
+        unit_vector *= -1
+
+    starting_altitude = alt.copy()
+
+    def condition(a) -> bool:
+        if stop < starting_altitude:
+            return a > stop
+        return a < stop
+
+    positions: list[Position] = []
+    while condition(alt):
         step_xyz = pos + i * unit_vector * step.to_value(u.km)
         step_pos = Geocentric(Distance(km=step_xyz).au, t=observer.skyfield_time)
         subpoint = wgs84.geographic_position_of(step_pos)
-        steps.append(
+        positions.append(
             Position(
                 subpoint.latitude.degrees << u.deg,
                 subpoint.longitude.degrees << u.deg,
@@ -121,7 +132,7 @@ def compute_atmosphere_slice_positions(
             + f"Alt: {subpoint.elevation.km:12.2f} km"
         )
 
-    return steps
+    return positions
 
 
 def compute_mass_fractions(row: Row) -> dict[str, float]:
@@ -191,10 +202,13 @@ def main():
         required=True,
     )
     _ = parser.add_argument(
-        "-l", type=float, default=-77.846, help="latitude, in degrees (+N/-S)"
+        "-l", type=float, default=-77.846, help="observer latitude, in degrees (+N/-S)"
     )
     _ = parser.add_argument(
-        "-ll", type=float, default=166.668, help="longitude, in degrees (+E/-W)"
+        "-ll",
+        type=float,
+        default=166.668,
+        help="observer longitude, in degrees (+E/-W)",
     )
     _ = parser.add_argument(
         "-o", type=float, default=40, help="observer altitude, in km"
@@ -203,7 +217,10 @@ def main():
         "-s", type=float, default=1, help="altitude slice step, in km"
     )
     _ = parser.add_argument(
-        "-a", type=float, default=200, help="maximum altitude, in km"
+        "-A", type=float, default=200, help="maximum altitude, in km"
+    )
+    _ = parser.add_argument(
+        "-a", type=float, default=None, help="minimum altitude, in km"
     )
     _ = parser.add_argument(
         "-f",
@@ -220,10 +237,14 @@ def main():
         arg.ll << u.deg,
         arg.o << u.km,
     )
+    start = (arg.a or arg.o) << u.km
     step = arg.s << u.km
-    stop = arg.a << u.km
-    positions = compute_atmosphere_slice_positions(impish, step, stop)
-    table = compute_mass_fractions_table(impish.utctime, positions)
+    stop = arg.A << u.km
+    towards_sun = compute_atmosphere_slice_positions(impish, step, stop)
+    away_from_sun = compute_atmosphere_slice_positions(impish, step, start)
+    table = compute_mass_fractions_table(
+        impish.utctime, list(reversed(away_from_sun[1:])) + towards_sun
+    )
     table.meta = {
         "observer datetime": impish.utctime,
         "observer lat": impish.lat,
