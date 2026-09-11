@@ -46,7 +46,7 @@ def generate(scintillator: str) -> detection.PhysicalDetectorStack:
             attenuations=MAT_DAT[n],
             average_across_bins=False,
         )
-        mat.attenuations.compton = False
+        mat.attenuations.compton = True
         mat.attenuations.photoelectric = mat.attenuations.rayleigh = True
         materials.append(mat)
 
