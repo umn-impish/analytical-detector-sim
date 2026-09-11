@@ -1,8 +1,9 @@
 import copy
 import itertools
 import os
+import pathlib
 import pickle
-from collections.abc import Mapping, Iterable
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -105,7 +106,7 @@ def compute_lookup_table(
     time: datetime,
     lat: u.Quantity,
     lon: u.Quantity,
-    altitudes: Iterable[u.Quantity],
+    altitudes: u.Quantity,
     remove_nonist_species: bool = True,
     **run_kwargs,
 ) -> QTable:
@@ -117,7 +118,7 @@ def compute_lookup_table(
     lat = lat << u.degree
     lon = lon << u.degree
     output = msis.run(
-        dates=time.astimezone(timezone.utc),
+        dates=np.array([time.astimezone(timezone.utc)]),
         lons=lon.value,
         lats=lat.value,
         alts=altitudes.to_value(u.km),
@@ -330,7 +331,8 @@ class Atmosphere:
         row = self._get_altitude_table_row(altitude)
         rho = row["total mass density"] << u.g / (u.cm**3)
         thickness = (
-            np.diff(cast(u.Quantity, self.lookup_table["altitude"]))[0] * thickness_factor
+            np.diff(cast(u.Quantity, self.lookup_table["altitude"]))[0]
+            * thickness_factor
         ) << u.cm
 
         elemental_abundances = self._compute_layer_composition(row)
@@ -340,13 +342,14 @@ class Atmosphere:
             thickness=thickness,
             density=rho,
             attenuations=layer_attenuation,
-            average_across_bins=False
+            average_across_bins=False,
         )
 
     def attenuate_spectrum_through_layers(
         self,
         flare_spectrum: flares.Flare,
-        out_dir: str,
+        out_dir: pathlib.Path,
+        plot_spectra: bool = False,
     ):
         """
         Attenuates the provided specturm from the maximum altitude down to
@@ -356,9 +359,11 @@ class Atmosphere:
         """
 
         dir_str = f"{flare_spectrum.goes_class}-layer-attenuation-zenith{self.solar_zenith.value}{self.solar_zenith.unit}"
-        out_dir = os.path.join(out_dir, dir_str)
-        plot_dir = os.path.join(out_dir, "plots")
-        os.makedirs(plot_dir, exist_ok=True)
+        out_dir = out_dir / dir_str
+        out_dir.mkdir(exist_ok=True)
+        if plot_spectra:
+            plot_dir = out_dir / "plots"
+            plot_dir.mkdir(exist_ok=True)
 
         print(
             f"Iterating from {self.altitudes.max()} to {self.altitudes.min()} altitude"
@@ -389,32 +394,29 @@ class Atmosphere:
             spectral_output["layers"].append(
                 (cast(float, altitude.to_value(u.km)), cumulative_transmission.copy())
             )
+            if plot_spectra:
+                ax = plot_spectrum(
+                    flare_spectrum.all_emission,
+                    flare_spectrum.energy_edges,
+                    flare_spectrum.goes_class,
+                    color="blue",
+                    label="layer incident spectrum",
+                )
 
-            ax = plot_spectrum(
-                flare_spectrum.all_emission,
-                flare_spectrum.energy_edges,
-                flare_spectrum.goes_class,
-                color="blue",
-                label="layer incident spectrum",
-            )
+                flare_spectrum.all_emission *= trans_vec
+                plot_spectrum(
+                    flare_spectrum.all_emission,
+                    flare_spectrum.energy_edges,
+                    flare_spectrum.goes_class,
+                    ax=ax,
+                    color="black",
+                    label="layer transmitted spectrum",
+                )
+                ax.set_title("Atmospheric attenuation")
+                ax.legend()
 
-            flare_spectrum.all_emission *= trans_vec
-            plot_spectrum(
-                flare_spectrum.all_emission,
-                flare_spectrum.energy_edges,
-                flare_spectrum.goes_class,
-                ax=ax,
-                color="black",
-                label="layer transmitted spectrum",
-            )
-            ax.set_title("Atmospheric attenuation")
-            ax.legend()
-
-            plot_file = os.path.join(
-                plot_dir, f"{altitude.value}{altitude.unit}.png"
-            )
-            plt.savefig(plot_file, dpi=150)
-
+                plot_file = cast(pathlib.Path, plot_dir) / f"{altitude.value}{altitude.unit}.png"
+                plt.savefig(plot_file, dpi=150)
 
         with open(os.path.join(out_dir, "transmissions.pkl"), "wb") as f:
             pickle.dump(spectral_output, f)
