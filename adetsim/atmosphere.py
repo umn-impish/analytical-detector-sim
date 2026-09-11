@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
+import asdf
 import astropy.units as u
 import matplotlib.axes as mpa
 import matplotlib.pyplot as plt
@@ -377,7 +378,13 @@ class Atmosphere:
         norm = self.altitudes.max() - self.altitudes.min()
         layer_thickness_factor = thickness / norm
 
-        spectral_output = {"input": flare_spectrum, "layers": []}
+        spectral_output = {
+            "input": {
+                "energy_bins": flare_spectrum.energy_edges,
+                "flare": flare_spectrum.all_emission,
+            },
+            "layers": [],
+        }
         cumulative_transmission = np.ones(flare_spectrum.thermal.size)
         flare_spectrum = copy.deepcopy(flare_spectrum)
 
@@ -415,11 +422,14 @@ class Atmosphere:
                 ax.set_title("Atmospheric attenuation")
                 ax.legend()
 
-                plot_file = cast(pathlib.Path, plot_dir) / f"{altitude.value}{altitude.unit}.png"
+                plot_file = (
+                    cast(pathlib.Path, plot_dir)
+                    / f"{altitude.value}{altitude.unit}.png"
+                )
                 plt.savefig(plot_file, dpi=150)
 
-        with open(os.path.join(out_dir, "transmissions.pkl"), "wb") as f:
-            pickle.dump(spectral_output, f)
+        af = asdf.AsdfFile(tree=spectral_output)
+        af.write_to(out_dir / "transmissions.asdf", all_array_compression="bzp2")
 
 
 def plot_spectrum(
