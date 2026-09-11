@@ -2,7 +2,11 @@
 
 # Run McMurdo attenuation for a variety of flares in parallel
 
-classes="C1 C5 M1 M5 X1 X5 X9"
+classes="C1"
+
+# Run for more flares, if you want.
+# classes="C1" # C5 M1 M5 X1 X5 X9"
 for c in $classes; do
-    python mcmurdo_station_attenuation.py -f $c -e 30 -s 110 &
+    # Optionally generate plots with the -p flag
+    python mcmurdo_station_attenuation.py -f $c -m 20 -M 200 &
 done
