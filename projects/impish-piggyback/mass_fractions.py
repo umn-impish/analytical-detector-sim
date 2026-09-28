@@ -7,13 +7,6 @@ import astropy.units as u
 import numpy as np
 from astropy import constants
 from astropy.table import QTable, Row
-from skyfield.api import load, wgs84
-from skyfield.jpllib import SpiceKernel
-from skyfield.positionlib import Barycentric, Geocentric
-from skyfield.timelib import Time as skyTime
-from skyfield.toposlib import GeographicPosition
-from skyfield.units import Distance
-from skyfield.vectorlib import VectorSum
 
 from adetsim.atmosphere import compute_lookup_table
 
@@ -23,116 +16,6 @@ class Position:
     lat: u.Quantity
     lon: u.Quantity
     alt: u.Quantity
-
-
-@dataclass
-class Observer:
-    time: datetime
-    lat: u.Quantity
-    lon: u.Quantity
-    alt: u.Quantity
-
-    @property
-    def utctime(self) -> datetime:
-        """The observer time, in UTC."""
-        return self.time.astimezone(timezone.utc)
-
-    @property
-    def skyfield_time(self) -> skyTime:
-        """Returns the skyfield Time object."""
-        return load.timescale().utc(
-            year=self.utctime.year,
-            month=self.utctime.month,
-            day=self.utctime.day,
-            hour=self.utctime.hour,
-            minute=self.utctime.minute,
-            second=self.utctime.second,
-        )
-
-    @property
-    def wsg84(self) -> GeographicPosition:
-        """The geographic position vector in the WGS84 frame."""
-        return wgs84.latlon(
-            latitude_degrees=self.lat.to_value(u.deg),
-            longitude_degrees=self.lon.to_value(u.deg),
-            elevation_m=cast(float, self.alt.to_value(u.m)),
-        )
-
-    @property
-    def bcrs(self) -> Barycentric:
-        """Barycentric BCRS position vector."""
-        return cast(Barycentric, (self._earth + self.wsg84).at(self.skyfield_time))
-
-    @property
-    def icrs(self) -> Geocentric:
-        """Geocentric ICRS position vector."""
-        return cast(Geocentric, self.wsg84.at(self.skyfield_time))
-
-    @property
-    def to_sun(self) -> np.ndarray:
-        """Unit vector pointing from the observer to the Sun."""
-        vector_to_sun = cast(np.ndarray, self.bcrs.observe(self._sun).position.km)
-        return vector_to_sun / np.linalg.norm(vector_to_sun)
-
-    @property
-    def _ephem(self) -> SpiceKernel:
-        """Ephemeris file."""
-        EPHEM_FILE: str = "de421.bsp"
-        return cast(SpiceKernel, load(EPHEM_FILE))
-
-    @property
-    def _earth(self) -> VectorSum:
-        """Earth ephemeris."""
-        return self._ephem["earth"]
-
-    @property
-    def _sun(self) -> VectorSum:
-        """Earth ephemeris."""
-        return self._ephem["sun"]
-
-
-@u.quantity_input()
-def compute_atmosphere_slice_positions(
-    observer: Observer, step: u.Quantity[u.km], stop: u.Quantity[u.km]
-) -> list[Position]:
-    """Compute the latitude, longitude, and altitude at equally spaced steps
-    along the Sun-observer vector.
-    """
-    i = 0
-    alt = observer.alt
-    pos = cast(np.ndarray, observer.icrs.position.km)
-    unit_vector = observer.to_sun
-    if stop < alt:
-        unit_vector *= -1
-
-    starting_altitude = alt.copy()
-
-    def condition(a) -> bool:
-        if stop < starting_altitude:
-            return a > stop
-        return a < stop
-
-    positions: list[Position] = []
-    while condition(alt):
-        step_xyz = pos + i * unit_vector * step.to_value(u.km)
-        step_pos = Geocentric(Distance(km=step_xyz).au, t=observer.skyfield_time)
-        subpoint = wgs84.geographic_position_of(step_pos)
-        positions.append(
-            Position(
-                subpoint.latitude.degrees << u.deg,
-                subpoint.longitude.degrees << u.deg,
-                subpoint.elevation.km << u.km,
-            )
-        )
-        alt = subpoint.elevation.km << u.km
-        i += 1
-        print(
-            f"Step {i:4d} | Lat: {subpoint.latitude.degrees:8.4f}° | "
-            + f"Lon: {subpoint.longitude.degrees:8.4f}° | "
-            + f"Alt: {subpoint.elevation.km:12.2f} km"
-        )
-
-    return positions
 
 
 def compute_mass_fractions(row: Row) -> dict[str, float]:
@@ -211,16 +94,13 @@ def main():
         help="observer longitude, in degrees (+E/-W)",
     )
     _ = parser.add_argument(
-        "-o", type=float, default=40, help="observer altitude, in km"
-    )
-    _ = parser.add_argument(
         "-s", type=float, default=1, help="altitude slice step, in km"
     )
     _ = parser.add_argument(
         "-A", type=float, default=200, help="maximum altitude, in km"
     )
     _ = parser.add_argument(
-        "-a", type=float, default=None, help="minimum altitude, in km"
+        "-a", type=float, default=40, help="minimum altitude, in km"
     )
     _ = parser.add_argument(
         "-f",
@@ -231,25 +111,22 @@ def main():
 
     arg = parser.parse_args()
     outfile = arg.f
-    impish = Observer(
-        datetime.strptime(arg.t, "%Y-%m-%dT%H:%M:%S%z"),
-        arg.l << u.deg,
-        arg.ll << u.deg,
-        arg.o << u.km,
-    )
-    start = (arg.a or arg.o) << u.km
-    step = arg.s << u.km
-    stop = arg.A << u.km
-    towards_sun = compute_atmosphere_slice_positions(impish, step, stop)
-    away_from_sun = compute_atmosphere_slice_positions(impish, step, start)
-    table = compute_mass_fractions_table(
-        impish.utctime, list(reversed(away_from_sun[1:])) + towards_sun
-    )
+    lat = (arg.l << u.deg,)
+    lon = (arg.ll << u.deg,)
+    time = datetime.strptime(arg.t, "%Y-%m-%dT%H:%M:%S%z")
+    start = arg.a
+    step = arg.s
+    stop = arg.A
+    overhead = [
+        Position(arg.l << u.deg, arg.ll << u.deg, a << u.km)
+        for a in np.arange(start, stop, step)
+    ]
+    table = compute_mass_fractions_table(time, overhead)
     table.meta = {
-        "observer datetime": impish.utctime,
-        "observer lat": impish.lat,
-        "observer lon": impish.lon,
-        "line-of-sight step": step,
+        "observer datetime": time,
+        "observer lat": lat,
+        "observer lon": lon,
+        "line-of-sight step": step << u.km,
     }
     table.write(outfile)
     print(f"output table to {outfile}")
